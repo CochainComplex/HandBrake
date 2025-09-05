@@ -20,6 +20,10 @@
 #include "handbrake/qsv_common.h"
 #endif
 
+#if HB_PROJECT_FEATURE_VAAPI
+#include "handbrake/vaapi_common.h"
+#endif
+
 #ifdef __APPLE__
 #include "platform/macosx/vt_common.h"
 #endif
@@ -1723,6 +1727,12 @@ static void do_job(hb_job_t *job)
     {
         #if HB_PROJECT_FEATURE_QSV
         hb_qsv_setup_job(job);
+        #endif
+    }
+    if (job->hw_decode & HB_DECODE_VAAPI)
+    {
+        #if HB_PROJECT_FEATURE_VAAPI
+        hb_vaapi_setup_job(job);
         #endif
     }
 

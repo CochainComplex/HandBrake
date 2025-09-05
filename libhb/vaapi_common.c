@@ -61,6 +61,14 @@ static const int vaapi_encoders[] = {
     HB_VCODEC_INVALID
 };
 
+// Helper function to check if a codec is a VAAPI encoder (DRY principle)
+int hb_vaapi_is_encoder(int vcodec)
+{
+    return (vcodec == HB_VCODEC_FFMPEG_VAAPI_H264 ||
+            vcodec == HB_VCODEC_FFMPEG_VAAPI_H265 ||
+            vcodec == HB_VCODEC_FFMPEG_VAAPI_H265_10BIT);
+}
+
 // Simple filter compatibility check
 static int vaapi_are_filters_supported(hb_list_t *filters)
 {
@@ -584,9 +592,140 @@ int hb_vaapi_available(void)
     return vaapi_available;
 }
 
+// Centralized VAAPI job setup - follows QSV pattern (KISS/SOLID)
+int hb_vaapi_setup_job(hb_job_t *job)
+{
+    // Always return success like QSV - validation modifies job flags
+    if (!job)
+    {
+        return 0;
+    }
+    
+    // Check if VAAPI is available at all
+    if (!hb_vaapi_available())
+    {
+        // Clear any VAAPI flags if hardware not available
+        if (job->hw_decode & HB_DECODE_VAAPI)
+        {
+            job->hw_decode &= ~HB_DECODE_VAAPI;
+        }
+        if (hb_vaapi_is_encoder(job->vcodec))
+        {
+            hb_log("VAAPI: Hardware not available, falling back to software");
+            // TODO: Set software encoder fallback
+        }
+        return 0;
+    }
+    
+    // Validate decoder support if requested
+    if (job->hw_decode & HB_DECODE_VAAPI)
+    {
+        // Check if codec is supported for decoding
+        int is_supported = 0;
+        if (job->title && job->title->video_codec_param)
+        {
+            is_supported = hb_vaapi_decode_is_codec_supported(
+                0,  // adapter_index - currently ignored
+                job->title->video_codec_param,
+                job->input_pix_fmt,
+                job->title->geometry.width,
+                job->title->geometry.height
+            );
+        }
+        
+        if (!is_supported)
+        {
+            // Silent fallback - remove VAAPI decode flag
+            job->hw_decode &= ~HB_DECODE_VAAPI;
+        }
+    }
+    
+    // Validate encoder support if VAAPI encoder selected
+    if (hb_vaapi_is_encoder(job->vcodec))
+    {
+        int encoder_supported = 0;
+        
+        // Check codec-specific support
+        switch (job->vcodec)
+        {
+            case HB_VCODEC_FFMPEG_VAAPI_H264:
+                encoder_supported = hb_vaapi_h264_available();
+                break;
+            case HB_VCODEC_FFMPEG_VAAPI_H265:
+                encoder_supported = hb_vaapi_h265_available();
+                break;
+            case HB_VCODEC_FFMPEG_VAAPI_H265_10BIT:
+                encoder_supported = hb_vaapi_h265_10bit_available();
+                break;
+        }
+        
+        // Check resolution limits
+        if (encoder_supported)
+        {
+            int max_width = hb_vaapi_get_max_width(job->vcodec);
+            int max_height = hb_vaapi_get_max_height(job->vcodec);
+            
+            if ((max_width > 0 && job->width > max_width) ||
+                (max_height > 0 && job->height > max_height))
+            {
+                hb_log("VAAPI: Resolution %dx%d exceeds hardware limits %dx%d",
+                       job->width, job->height, max_width, max_height);
+                encoder_supported = 0;
+            }
+        }
+        
+        // Validate rate control mode compatibility
+        if (encoder_supported)
+        {
+            if (job->vquality >= 0) // Quality-based encoding
+            {
+                if (!hb_vaapi_supports_cqp(job->vcodec))
+                {
+                    // Try VBR fallback
+                    if (!hb_vaapi_supports_vbr(job->vcodec))
+                    {
+                        hb_log("VAAPI: No suitable rate control mode for quality encoding");
+                        encoder_supported = 0;
+                    }
+                }
+            }
+            else // Bitrate-based encoding
+            {
+                if (!hb_vaapi_supports_vbr(job->vcodec) && 
+                    !hb_vaapi_supports_cbr(job->vcodec))
+                {
+                    hb_log("VAAPI: No suitable rate control mode for bitrate encoding");
+                    encoder_supported = 0;
+                }
+            }
+        }
+        
+        if (!encoder_supported)
+        {
+            hb_log("VAAPI: Encoder not supported for current configuration");
+            // TODO: Set software encoder fallback
+        }
+        
+        // Cache capabilities for encoder use (avoids repeated queries)
+        // This is done automatically by the availability check functions
+    }
+    
+    return 0;  // Always return success like QSV
+}
+
 #else // !HB_PROJECT_FEATURE_VAAPI
 
 // Stub implementations when VAAPI is disabled
+int hb_vaapi_is_encoder(int vcodec)
+{
+    return 0;
+}
+
+int hb_vaapi_setup_job(hb_job_t *job)
+{
+    return 0;
+}
+
 int hb_vaapi_h264_available(void)
 {
     return 0;

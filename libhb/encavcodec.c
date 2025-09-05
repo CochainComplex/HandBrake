@@ -549,9 +549,7 @@ int encavcodecInit( hb_work_object_t * w, hb_job_t * job )
             av_dict_set(&av_opts, "rate_control", "u_vbr", 0); // options are cbr, pc_vbr, u_vbr, ld_vbr, g_vbr, gld_vbr
         }
 
-        if (job->vcodec == HB_VCODEC_FFMPEG_VAAPI_H264 ||
-            job->vcodec == HB_VCODEC_FFMPEG_VAAPI_H265 ||
-            job->vcodec == HB_VCODEC_FFMPEG_VAAPI_H265_10BIT)
+        if (hb_vaapi_is_encoder(job->vcodec))
         {
             // Use cached capabilities for rate control
             if (hb_vaapi_supports_vbr(job->vcodec))
@@ -729,9 +727,7 @@ int encavcodecInit( hb_work_object_t * w, hb_job_t * job )
             }
             hb_log( "encavcodec: GOP Size %d", context->gop_size );
         }
-        else if (job->vcodec == HB_VCODEC_FFMPEG_VAAPI_H264 ||
-                 job->vcodec == HB_VCODEC_FFMPEG_VAAPI_H265 ||
-                 job->vcodec == HB_VCODEC_FFMPEG_VAAPI_H265_10BIT)
+        else if (hb_vaapi_is_encoder(job->vcodec))
         {
             // Use cached capabilities to set appropriate rate control
             if (hb_vaapi_supports_cqp(job->vcodec))
@@ -812,9 +808,7 @@ int encavcodecInit( hb_work_object_t * w, hb_job_t * job )
 #endif
 
         // Initialize VAAPI hardware context for VAAPI encoders
-        if ((job->vcodec == HB_VCODEC_FFMPEG_VAAPI_H264 || 
-             job->vcodec == HB_VCODEC_FFMPEG_VAAPI_H265 ||
-             job->vcodec == HB_VCODEC_FFMPEG_VAAPI_H265_10BIT) && 
+        if (hb_vaapi_is_encoder(job->vcodec) && 
             !job->hw_device_ctx)
         {
             hb_hwaccel_hw_device_ctx_init(AV_HWDEVICE_TYPE_VAAPI,

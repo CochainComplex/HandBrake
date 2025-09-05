@@ -12,6 +12,17 @@
 
 #include <libavcodec/avcodec.h>
 
+#ifdef __LIBHB__
+// Forward declaration for private API
+typedef struct hb_job_s hb_job_t;
+
+// Job setup function (similar to QSV pattern)
+int hb_vaapi_setup_job(hb_job_t *job);
+#endif
+
+// Helper function for codec checking (DRY principle)
+int hb_vaapi_is_encoder(int vcodec);
+
 int hb_vaapi_h264_available(void);
 int hb_vaapi_h265_available(void);
 int hb_vaapi_h265_10bit_available(void);
