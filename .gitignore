@@ -53,3 +53,6 @@ CLAUDE.md
 *.mp4
 test_*
 *.log
+
+# Documentation files
+VAAPI_IMPLEMENTATION_FIX.md

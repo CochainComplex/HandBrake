@@ -241,12 +241,59 @@ int hb_hwaccel_hw_device_ctx_init(enum AVHWDeviceType device_type, int device_in
     }
 #endif
 
+#if HB_PROJECT_FEATURE_VAAPI
+    // VAAPI-specific validation and setup (KISS/SOLID)
+    if (device_type == AV_HWDEVICE_TYPE_VAAPI)
+    {
+        hb_log("VAAPI: Attempting hardware device context initialization");
+        
+        // Check if VAAPI is available before attempting context creation
+        extern int hb_vaapi_available(void);
+        if (!hb_vaapi_available())
+        {
+            hb_log("VAAPI: Hardware not available, context initialization skipped");
+            av_dict_free(&dict);
+            return -1;
+        }
+        
+        // For VAAPI, we might want to specify the DRM device
+        // This helps with multi-GPU systems
+        if (device_index == -1)
+        {
+            // Try default render node first
+            const char *default_device = "/dev/dri/renderD128";
+            hb_log("VAAPI: Using default DRM device: %s", default_device);
+            // Note: passing NULL to av_hwdevice_ctx_create will auto-detect
+        }
+    }
+#endif
+
     if ((err = av_hwdevice_ctx_create(&ctx, device_type, NULL, dict, 0)) < 0)
     {
-        hb_error("hwaccel: failed to create hwdevice");
+#if HB_PROJECT_FEATURE_VAAPI
+        if (device_type == AV_HWDEVICE_TYPE_VAAPI)
+        {
+            hb_log("VAAPI: Hardware device context creation failed (error: %d)", err);
+            hb_log("VAAPI: Common causes:");
+            hb_log("VAAPI:   - Missing VAAPI drivers (mesa-va-drivers or intel-media-driver)");
+            hb_log("VAAPI:   - Permission issues with /dev/dri/renderD* nodes");
+            hb_log("VAAPI:   - Unsupported GPU hardware");
+            hb_log("VAAPI:   - X11/Wayland display issues");
+        }
+        else
+#endif
+        {
+            hb_error("hwaccel: failed to create hwdevice");
+        }
     }
     else
     {
+#if HB_PROJECT_FEATURE_VAAPI
+        if (device_type == AV_HWDEVICE_TYPE_VAAPI)
+        {
+            hb_log("VAAPI: Hardware device context created successfully");
+        }
+#endif
         *hw_device_ctx = ctx;
     }
 

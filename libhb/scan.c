@@ -720,7 +720,18 @@ static int DecodePreviews( hb_scan_t * data, hb_title_t * title, int flush )
         hwaccel->caps & HB_HWACCEL_CAP_SCAN &&
         hb_hwaccel_is_available(hwaccel, title->video_codec_param))
     {
-        hb_hwaccel_hw_device_ctx_init(hwaccel->type, -1, &hw_device_ctx);
+        // Validate hardware context initialization (KISS - check return values)
+        int ctx_result = hb_hwaccel_hw_device_ctx_init(hwaccel->type, -1, &hw_device_ctx);
+        if (ctx_result < 0)
+        {
+            hb_log("VAAPI: Hardware device context initialization failed (error: %d), falling back to software", ctx_result);
+            hw_device_ctx = NULL;
+            hwaccel = NULL;  // Disable hardware acceleration for this scan
+        }
+        else
+        {
+            hb_log("VAAPI: Hardware device context initialized successfully");
+        }
     }
 
     hb_work_object_t *vid_decoder = hb_get_work(data->h, title->video_codec);
@@ -731,13 +742,42 @@ static int DecodePreviews( hb_scan_t * data, hb_title_t * title, int flush )
 
     if (vid_decoder->init(vid_decoder, NULL))
     {
-        hb_error("Decoder init failed!");
-        free(info_list);
-        crop_record_free(crops);
-        free( vid_decoder );
-        hb_stream_close(&stream);
-        hb_hwaccel_hw_device_ctx_close(&hw_device_ctx);
-        return 0;
+        // Add hardware fallback logic (SOLID - single responsibility)
+        if (hw_device_ctx != NULL) 
+        {
+            hb_log("Hardware decoder init failed, attempting software fallback");
+            
+            // Clean up hardware context
+            hb_hwaccel_hw_device_ctx_close(&hw_device_ctx);
+            
+            // Reset decoder for software mode
+            vid_decoder->hw_device_ctx = NULL;
+            vid_decoder->hw_accel = NULL;
+            
+            // Try software decoder initialization
+            if (vid_decoder->init(vid_decoder, NULL))
+            {
+                hb_error("Software decoder init also failed!");
+                free(info_list);
+                crop_record_free(crops);
+                free( vid_decoder );
+                hb_stream_close(&stream);
+                return 0;
+            }
+            else
+            {
+                hb_log("Software decoder initialized successfully");
+            }
+        }
+        else
+        {
+            hb_error("Decoder init failed!");
+            free(info_list);
+            crop_record_free(crops);
+            free( vid_decoder );
+            hb_stream_close(&stream);
+            return 0;
+        }
     }
 
     for( i = 0; i < data->preview_count; i++ )

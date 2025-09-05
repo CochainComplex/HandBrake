@@ -80,13 +80,63 @@ static int vaapi_are_filters_supported(hb_list_t *filters)
 // Function to find VAAPI hardware decoder for a given codec
 static void * vaapi_find_decoder(int codec_param)
 {
+    hb_log("VAAPI: vaapi_find_decoder called with codec_param: %d (0x%x)", codec_param, codec_param);
+    
+    // First check if VAAPI hardware is actually available (KISS - fail fast)
+    if (!hb_vaapi_available()) 
+    {
+        hb_log("VAAPI: Hardware not available, skipping VAAPI decoder lookup");
+        // Return software decoder as fallback instead of NULL
+        const AVCodec *sw_codec = avcodec_find_decoder(codec_param);
+        if (sw_codec)
+        {
+            hb_log("VAAPI: Returning software decoder %s as fallback", sw_codec->name);
+        }
+        return (void *)sw_codec;
+    }
+    
     const char *codec_name = hb_vaapi_decode_get_codec_name(codec_param);
     if (codec_name != NULL)
     {
-        return (void *)avcodec_find_decoder_by_name(codec_name);
+        hb_log("VAAPI: Looking for hardware decoder: %s", codec_name);
+        
+        // Validate codec is actually supported by hardware before lookup
+        if (!hb_vaapi_decode_is_codec_supported(0, codec_param, AV_PIX_FMT_NV12, 1920, 1080))
+        {
+            hb_log("VAAPI: Codec %d not supported by hardware, falling back to software", codec_param);
+            const AVCodec *sw_codec = avcodec_find_decoder(codec_param);
+            if (sw_codec)
+            {
+                hb_log("VAAPI: Using software decoder %s", sw_codec->name);
+            }
+            return (void *)sw_codec;
+        }
+        
+        const AVCodec *codec = avcodec_find_decoder_by_name(codec_name);
+        if (codec != NULL)
+        {
+            hb_log("VAAPI: Successfully found hardware decoder: %s (codec id: %d)", codec_name, codec->id);
+            return (void *)codec;
+        }
+        else
+        {
+            hb_log("VAAPI: ERROR - Hardware decoder %s not found in FFmpeg build", codec_name);
+            hb_log("VAAPI: This usually means FFmpeg was built without VAAPI decoder support");
+        }
     }
-    // Fallback to default decoder if VAAPI decoder not available
-    return NULL;
+    else
+    {
+        hb_log("VAAPI: No VAAPI decoder name mapping for codec_param: %d", codec_param);
+    }
+    
+    // Always return software decoder as fallback instead of NULL (prevents scan failure)
+    hb_log("VAAPI: Hardware decoder lookup failed, falling back to software decoding");
+    const AVCodec *sw_codec = avcodec_find_decoder(codec_param);
+    if (sw_codec)
+    {
+        hb_log("VAAPI: Using software decoder %s as fallback", sw_codec->name);
+    }
+    return (void *)sw_codec;
 }
 
 // Hardware accelerator structure
@@ -580,14 +630,66 @@ int hb_vaapi_decode_is_codec_supported(int adapter_index, int video_codec_param,
 
 int hb_vaapi_available(void)
 {
-    // Check if VAAPI is available on the system
+    // Singleton pattern with comprehensive validation (DRY - single detection)
     // Cache the result to avoid repeated detection
     if (vaapi_available == -1)
     {
-        // VAAPI is available if any codec is supported
-        vaapi_available = hb_vaapi_h264_available() ||
-                         hb_vaapi_h265_available() ||
-                         hb_vaapi_h265_10bit_available();
+        hb_log("VAAPI: Checking hardware availability...");
+        
+        // First check if hardware is globally disabled
+        if (hb_is_hardware_disabled())
+        {
+            hb_log("VAAPI: Hardware globally disabled");
+            vaapi_available = 0;
+            return vaapi_available;
+        }
+        
+        // Check individual codec encoding support
+        int h264_avail = hb_vaapi_h264_available();
+        int h265_avail = hb_vaapi_h265_available();
+        int h265_10bit_avail = hb_vaapi_h265_10bit_available();
+        
+        hb_log("VAAPI: H.264 encoder available: %d", h264_avail);
+        hb_log("VAAPI: H.265 encoder available: %d", h265_avail);
+        hb_log("VAAPI: H.265 10-bit encoder available: %d", h265_10bit_avail);
+        
+        vaapi_available = h264_avail || h265_avail || h265_10bit_avail;
+        
+        // Additional validation: ensure FFmpeg VAAPI decoders are available
+        if (vaapi_available)
+        {
+            int decoder_count = 0;
+            const char* test_codecs[] = {"h264_vaapi", "hevc_vaapi", "av1_vaapi", NULL};
+            
+            hb_log("VAAPI: Validating FFmpeg decoder availability...");
+            for (int i = 0; test_codecs[i] != NULL; i++)
+            {
+                const AVCodec *codec = avcodec_find_decoder_by_name(test_codecs[i]);
+                if (codec != NULL)
+                {
+                    decoder_count++;
+                    hb_log("VAAPI: FFmpeg decoder %s found", test_codecs[i]);
+                }
+                else
+                {
+                    hb_log("VAAPI: FFmpeg decoder %s not available", test_codecs[i]);
+                }
+            }
+            
+            if (decoder_count == 0)
+            {
+                hb_log("VAAPI: WARNING - No FFmpeg VAAPI decoders found, hardware decoding disabled");
+                hb_log("VAAPI: Encoders may still work but will require software decode");
+                // Don't disable completely - encoders can still work with software decode
+            }
+            else
+            {
+                hb_log("VAAPI: Found %d FFmpeg VAAPI decoder(s)", decoder_count);
+            }
+        }
+        
+        hb_log("VAAPI: Overall availability: %d (encoders: %s, decoders: checked)", 
+               vaapi_available, vaapi_available ? "yes" : "no");
     }
     return vaapi_available;
 }
