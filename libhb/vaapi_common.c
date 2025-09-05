@@ -171,14 +171,11 @@ static int check_vaapi_codec_support(VAProfile profile_to_check)
                     }
                 }
                 
-                vaTerminate(va_dpy);
-                close(fd);
-                
                 if (has_profile)
                 {
                     hb_log("VAAPI: %s profile supported on %s (VA-API %d.%d)\n", profile_name, render_nodes[i], major, minor);
                     
-                    // Query capabilities for this profile
+                    // Query capabilities for this profile BEFORE terminating VA display
                     hb_vaapi_caps_t *caps_ptr = NULL;
                     if (profile_to_check == VAProfileH264Main || profile_to_check == VAProfileH264High)
                     {
@@ -193,7 +190,13 @@ static int check_vaapi_codec_support(VAProfile profile_to_check)
                     {
                         query_vaapi_capabilities(va_dpy, profile_to_check, caps_ptr);
                     }
-                    
+                }
+                
+                vaTerminate(va_dpy);
+                close(fd);
+                
+                if (has_profile)
+                {
                     return 1;
                 }
                 else
@@ -286,9 +289,19 @@ static void query_vaapi_capabilities(VADisplay va_dpy, VAProfile profile, hb_vaa
             caps->supports_bframes = (attrs[4].value > 2) ? 1 : 0;
         }
         
-        hb_log("VAAPI: Capabilities - RC modes: 0x%x, Max res: %dx%d, 10bit: %d, B-frames: %d\n",
+        // Quality range - number of quality levels
+        if (attrs[5].value != VA_ATTRIB_NOT_SUPPORTED) {
+            caps->quality_levels = attrs[5].value;
+        }
+        
+        // Packed headers support
+        if (attrs[6].value != VA_ATTRIB_NOT_SUPPORTED) {
+            caps->packed_headers = attrs[6].value;
+        }
+        
+        hb_log("VAAPI: Capabilities - RC modes: 0x%x, Max res: %dx%d, 10bit: %d, B-frames: %d, Quality levels: %d\n",
                caps->rate_control_modes, caps->max_width, caps->max_height, 
-               caps->supports_10bit, caps->supports_bframes);
+               caps->supports_10bit, caps->supports_bframes, caps->quality_levels);
     }
 }
 
@@ -379,6 +392,81 @@ int hb_vaapi_get_max_height(int vcodec)
     return 4096;
 }
 
+// Define VA-API rate control mode bits if not already defined
+#ifndef VA_RC_CQP
+#define VA_RC_CQP 0x00000010
+#endif
+#ifndef VA_RC_CBR
+#define VA_RC_CBR 0x00000002
+#endif
+#ifndef VA_RC_VBR
+#define VA_RC_VBR 0x00000004
+#endif
+
+int hb_vaapi_supports_cqp(int vcodec)
+{
+    if (vcodec == HB_VCODEC_FFMPEG_VAAPI_H264)
+    {
+        hb_vaapi_h264_available();
+        return (h264_caps.rate_control_modes & VA_RC_CQP) ? 1 : 0;
+    }
+    else if (vcodec == HB_VCODEC_FFMPEG_VAAPI_H265 || 
+             vcodec == HB_VCODEC_FFMPEG_VAAPI_H265_10BIT)
+    {
+        hb_vaapi_h265_available();
+        return (h265_caps.rate_control_modes & VA_RC_CQP) ? 1 : 0;
+    }
+    return 0;
+}
+
+int hb_vaapi_supports_vbr(int vcodec)
+{
+    if (vcodec == HB_VCODEC_FFMPEG_VAAPI_H264)
+    {
+        hb_vaapi_h264_available();
+        return (h264_caps.rate_control_modes & VA_RC_VBR) ? 1 : 0;
+    }
+    else if (vcodec == HB_VCODEC_FFMPEG_VAAPI_H265 || 
+             vcodec == HB_VCODEC_FFMPEG_VAAPI_H265_10BIT)
+    {
+        hb_vaapi_h265_available();
+        return (h265_caps.rate_control_modes & VA_RC_VBR) ? 1 : 0;
+    }
+    return 0;
+}
+
+int hb_vaapi_supports_cbr(int vcodec)
+{
+    if (vcodec == HB_VCODEC_FFMPEG_VAAPI_H264)
+    {
+        hb_vaapi_h264_available();
+        return (h264_caps.rate_control_modes & VA_RC_CBR) ? 1 : 0;
+    }
+    else if (vcodec == HB_VCODEC_FFMPEG_VAAPI_H265 || 
+             vcodec == HB_VCODEC_FFMPEG_VAAPI_H265_10BIT)
+    {
+        hb_vaapi_h265_available();
+        return (h265_caps.rate_control_modes & VA_RC_CBR) ? 1 : 0;
+    }
+    return 0;
+}
+
+uint32_t hb_vaapi_get_rc_modes(int vcodec)
+{
+    if (vcodec == HB_VCODEC_FFMPEG_VAAPI_H264)
+    {
+        hb_vaapi_h264_available();
+        return h264_caps.rate_control_modes;
+    }
+    else if (vcodec == HB_VCODEC_FFMPEG_VAAPI_H265 || 
+             vcodec == HB_VCODEC_FFMPEG_VAAPI_H265_10BIT)
+    {
+        hb_vaapi_h265_available();
+        return h265_caps.rate_control_modes;
+    }
+    return 0;
+}
+
 #else // !HB_PROJECT_FEATURE_VAAPI
 
 // Stub implementations when VAAPI is disabled
@@ -410,6 +498,26 @@ int hb_vaapi_get_max_width(int vcodec)
 int hb_vaapi_get_max_height(int vcodec)
 {
     return 4096;
+}
+
+int hb_vaapi_supports_cqp(int vcodec)
+{
+    return 0;
+}
+
+int hb_vaapi_supports_vbr(int vcodec)
+{
+    return 0;
+}
+
+int hb_vaapi_supports_cbr(int vcodec)
+{
+    return 0;
+}
+
+uint32_t hb_vaapi_get_rc_modes(int vcodec)
+{
+    return 0;
 }
 
 #endif // HB_PROJECT_FEATURE_VAAPI

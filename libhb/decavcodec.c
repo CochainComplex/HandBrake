@@ -1469,6 +1469,15 @@ int reinit_video_filters(hb_work_private_t * pv)
             hb_dict_set(settings, "format", hb_value_string(av_get_pix_fmt_name(pv->job->input_pix_fmt)));
             hb_avfilter_append_dict(filters, "scale_cuda", settings);
         }
+        else if (pv->frame->hw_frames_ctx && pv->job->hw_pix_fmt == AV_PIX_FMT_VAAPI)
+        {
+            // Use VAAPI hardware filters for scaling and format conversion
+            hb_dict_set(settings, "w", hb_value_int(orig_width));
+            hb_dict_set(settings, "h", hb_value_int(orig_height));
+            hb_dict_set(settings, "format", hb_value_string(av_get_pix_fmt_name(pv->job->input_pix_fmt)));
+            hb_avfilter_append_dict(filters, "scale_vaapi", settings);
+            hb_log("decavcodec: Using VAAPI hardware filters for scaling");
+        }
         else if (hb_av_can_use_zscale(pv->frame->format,
                                       pv->frame->width, pv->frame->height,
                                       orig_width, orig_height))
@@ -1897,6 +1906,17 @@ static int decavcodecvInit( hb_work_object_t * w, hb_job_t * job )
             }
         }
 #endif
+
+        // Initialize VAAPI hardware frames context for decoder
+        if (w->hw_accel && w->hw_accel->type == AV_HWDEVICE_TYPE_VAAPI)
+        {
+            if (job && job->hw_pix_fmt == AV_PIX_FMT_VAAPI)
+            {
+                // Set up hardware frames context to keep frames in VAAPI format
+                hb_hwaccel_hwframes_ctx_init(pv->context, job->input_pix_fmt, AV_PIX_FMT_VAAPI);
+                hb_log("decavcodec: VAAPI decoder hardware frames context initialized");
+            }
+        }
 
         if ( hb_avcodec_open( pv->context, pv->codec, &av_opts, pv->threads ) )
         {

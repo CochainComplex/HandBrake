@@ -19,4 +19,10 @@ int hb_vaapi_supports_bframes(int vcodec);
 int hb_vaapi_get_max_width(int vcodec);
 int hb_vaapi_get_max_height(int vcodec);
 
+// Rate control mode query functions
+int hb_vaapi_supports_cqp(int vcodec);
+int hb_vaapi_supports_vbr(int vcodec);
+int hb_vaapi_supports_cbr(int vcodec);
+uint32_t hb_vaapi_get_rc_modes(int vcodec);
+
 #endif // HANDBRAKE_VAAPI_COMMON_H

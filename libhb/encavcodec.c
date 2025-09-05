@@ -548,6 +548,34 @@ int encavcodecInit( hb_work_object_t * w, hb_job_t * job )
             job->vcodec == HB_VCODEC_FFMPEG_MF_AV1) {
             av_dict_set(&av_opts, "rate_control", "u_vbr", 0); // options are cbr, pc_vbr, u_vbr, ld_vbr, g_vbr, gld_vbr
         }
+
+        if (job->vcodec == HB_VCODEC_FFMPEG_VAAPI_H264 ||
+            job->vcodec == HB_VCODEC_FFMPEG_VAAPI_H265 ||
+            job->vcodec == HB_VCODEC_FFMPEG_VAAPI_H265_10BIT)
+        {
+            // Use cached capabilities for rate control
+            if (hb_vaapi_supports_vbr(job->vcodec))
+            {
+                av_dict_set(&av_opts, "rc_mode", "VBR", 0);
+                // Set max rate to 1.5x target for VBR headroom
+                char maxrate[16];
+                snprintf(maxrate, 16, "%d", (int)(context->bit_rate * 1.5));
+                av_dict_set(&av_opts, "maxrate", maxrate, 0);
+                hb_log("encavcodec: VAAPI VBR mode at %d kbps", job->vbitrate);
+            }
+            else if (hb_vaapi_supports_cbr(job->vcodec))
+            {
+                av_dict_set(&av_opts, "rc_mode", "CBR", 0);
+                hb_log("encavcodec: VAAPI CBR mode at %d kbps", job->vbitrate);
+            }
+            else
+            {
+                hb_log("encavcodec: VAAPI using default rate control");
+            }
+            
+            // Set GOP size
+            context->gop_size = (int)(FFMIN(av_q2d(fps) * 2, 120));
+        }
     }
     else
     {
@@ -701,6 +729,37 @@ int encavcodecInit( hb_work_object_t * w, hb_job_t * job )
             }
             hb_log( "encavcodec: GOP Size %d", context->gop_size );
         }
+        else if (job->vcodec == HB_VCODEC_FFMPEG_VAAPI_H264 ||
+                 job->vcodec == HB_VCODEC_FFMPEG_VAAPI_H265 ||
+                 job->vcodec == HB_VCODEC_FFMPEG_VAAPI_H265_10BIT)
+        {
+            // Use cached capabilities to set appropriate rate control
+            if (hb_vaapi_supports_cqp(job->vcodec))
+            {
+                // Hardware supports CQP (constant QP)
+                av_dict_set(&av_opts, "rc_mode", "CQP", 0);
+                char qp[7];
+                snprintf(qp, 7, "%.0f", job->vquality);
+                av_dict_set(&av_opts, "qp", qp, 0);
+                hb_log("encavcodec: VAAPI encoding at CQP %.0f", job->vquality);
+            }
+            else if (hb_vaapi_supports_vbr(job->vcodec))
+            {
+                // Fall back to VBR with quality-based bitrate
+                av_dict_set(&av_opts, "rc_mode", "VBR", 0);
+                // Calculate a reasonable bitrate based on quality
+                int bitrate = 5000 - (int)(job->vquality * 100);
+                context->bit_rate = bitrate * 1000;
+                hb_log("encavcodec: VAAPI CQP not supported, using VBR at %d kbps", bitrate);
+            }
+            else
+            {
+                hb_log("encavcodec: VAAPI neither CQP nor VBR supported, using default");
+            }
+            
+            // Set GOP size for scene change compensation
+            context->gop_size = (int)(FFMIN(av_q2d(fps) * 2, 120));
+        }
         else if (job->vcodec == HB_VCODEC_FFMPEG_MF_H264 ||
                  job->vcodec == HB_VCODEC_FFMPEG_MF_H265 ||
                  job->vcodec == HB_VCODEC_FFMPEG_MF_AV1)
@@ -807,11 +866,13 @@ int encavcodecInit( hb_work_object_t * w, hb_job_t * job )
             if (hb_vaapi_supports_bframes(job->vcodec))
             {
                 context->max_b_frames = 2;  // Conservative default for supported hardware
+                context->has_b_frames = 2;  // Set decoder delay for proper DTS calculation
                 hb_log("encavcodec: VAAPI hardware supports B-frames, setting max_b_frames to 2");
             }
             else
             {
                 context->max_b_frames = 0;  // Disable B-frames if not supported
+                context->has_b_frames = 0;  // No decoder delay needed
                 hb_log("encavcodec: VAAPI hardware does not support B-frames");
             }
         }
@@ -1340,6 +1401,26 @@ static void Encode( hb_work_object_t *w, hb_buffer_t **buf_in,
     hb_video_buffer_to_avframe(&frame, buf_in);
     frame.pts = pv->frameno_in++;
     frame.duration = 0;
+    
+    // Set DTS for proper B-frame handling with VAAPI
+    // When B-frames are used, DTS must be offset to ensure monotonic timestamps
+    if (pv->context->max_b_frames > 0)
+    {
+        // Calculate DTS offset based on B-frame delay
+        // DTS = PTS - delay to ensure decode order precedes presentation order
+        frame.pkt_dts = frame.pts - pv->context->max_b_frames;
+        
+        // Ensure DTS doesn't go negative for first frames
+        if (frame.pkt_dts < 0)
+        {
+            frame.pkt_dts = 0;
+        }
+    }
+    else
+    {
+        // No B-frames, DTS equals PTS
+        frame.pkt_dts = frame.pts;
+    }
 
     // For constant quality, setting the quality in AVCodecContext
     // doesn't do the trick.  It must be set in the AVFrame.
@@ -1357,9 +1438,17 @@ static void Encode( hb_work_object_t *w, hb_buffer_t **buf_in,
     }
 
     // Check if encoder expects hardware frames but received software frame
+    // NOTE: With proper VAAPI pipeline configuration in decavcodec.c, this should not happen
+    // Frames should already be in hardware format throughout the pipeline
     if (pv->context->pix_fmt == AV_PIX_FMT_VAAPI && frame.format != AV_PIX_FMT_VAAPI)
     {
-        hb_log("encavcodec: Detected software frame (format=%d), uploading to VAAPI hardware", frame.format);
+        hb_error("encavcodec: CRITICAL: Frame format mismatch! Expected VAAPI but got %s",
+                 av_get_pix_fmt_name(frame.format));
+        hb_error("encavcodec: This indicates the decoder pipeline is not maintaining hardware format");
+        
+        // Temporary workaround: upload software frame to hardware
+        // TODO: Remove this workaround once pipeline is fully fixed
+        hb_log("encavcodec: Attempting software->hardware upload as temporary workaround");
         
         // Verify hw_frames_ctx is available
         if (!pv->context->hw_frames_ctx)
@@ -1546,6 +1635,44 @@ static int apply_vce_preset(AVDictionary **av_opts, int vcodec, const char *pres
     return 0;
 }
 
+static int apply_vaapi_preset(AVDictionary **av_opts, int vcodec, const char *preset)
+{
+    // Map HandBrake preset names to VAAPI compression levels
+    if (!preset || strcmp(preset, "default") == 0)
+    {
+        av_dict_set(av_opts, "compression_level", "2", 0);
+    }
+    else if (strcmp(preset, "slow") == 0)
+    {
+        av_dict_set(av_opts, "compression_level", "0", 0);
+    }
+    else if (strcmp(preset, "medium") == 0)
+    {
+        av_dict_set(av_opts, "compression_level", "2", 0);
+    }
+    else if (strcmp(preset, "fast") == 0)
+    {
+        av_dict_set(av_opts, "compression_level", "5", 0);
+    }
+    else if (strcmp(preset, "hp") == 0)  // High performance
+    {
+        av_dict_set(av_opts, "compression_level", "6", 0);
+    }
+    else if (strcmp(preset, "hq") == 0)  // High quality
+    {
+        av_dict_set(av_opts, "compression_level", "0", 0);
+    }
+    else if (strcmp(preset, "bd") == 0)  // Bluray disc
+    {
+        av_dict_set(av_opts, "compression_level", "1", 0);
+    }
+    else if (strcmp(preset, "ll") == 0)  // Low latency
+    {
+        av_dict_set(av_opts, "compression_level", "7", 0);
+    }
+    return 0;
+}
+
 static int apply_vpx_preset(AVDictionary ** av_opts, const char * preset)
 {
     if (preset == NULL)
@@ -1672,6 +1799,11 @@ static int apply_encoder_preset(int vcodec, AVCodecContext *context,
             hb_log("encavcodec: encoding with preset %s", preset);
             break;
 #endif
+
+        case HB_VCODEC_FFMPEG_VAAPI_H264:
+        case HB_VCODEC_FFMPEG_VAAPI_H265:
+        case HB_VCODEC_FFMPEG_VAAPI_H265_10BIT:
+            return apply_vaapi_preset(av_opts, vcodec, preset);
 
         case HB_VCODEC_FFMPEG_FFV1:
             return apply_ffv1_preset(context, av_opts, preset);
