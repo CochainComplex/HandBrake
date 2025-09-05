@@ -260,6 +260,7 @@ extern hb_hwaccel_t hb_hwaccel_videotoolbox;
 extern hb_hwaccel_t hb_hwaccel_qsv;
 extern hb_hwaccel_t hb_hwaccel_nvdec;
 extern hb_hwaccel_t hb_hwaccel_mf;
+extern hb_hwaccel_t hb_hwaccel_vaapi;
 #endif
 
 // Update win/CS/HandBrake.Interop/HandBrakeInterop/HbLib/hb_container_s.cs when changing this struct
@@ -725,6 +726,10 @@ struct hb_job_s
 #define HB_VCODEC_FFMPEG_QSV_AV1_8BIT      (0x00000070 | HB_VCODEC_FFMPEG_MASK | HB_VCODEC_QSV_MASK | HB_VCODEC_AV1_MASK)
 #define HB_VCODEC_FFMPEG_QSV_AV1_10BIT     (0x00000071 | HB_VCODEC_FFMPEG_MASK | HB_VCODEC_QSV_MASK | HB_VCODEC_AV1_MASK)
 #define HB_VCODEC_FFMPEG_QSV_AV1           HB_VCODEC_FFMPEG_QSV_AV1_8BIT
+
+#define HB_VCODEC_FFMPEG_VAAPI_H264        (0x00000080 | HB_VCODEC_FFMPEG_MASK | HB_VCODEC_H264_MASK)
+#define HB_VCODEC_FFMPEG_VAAPI_H265        (0x00000081 | HB_VCODEC_FFMPEG_MASK | HB_VCODEC_H265_MASK)
+#define HB_VCODEC_FFMPEG_VAAPI_H265_10BIT  (0x00000082 | HB_VCODEC_FFMPEG_MASK | HB_VCODEC_H265_MASK)
 
 /* define an invalid CQ value compatible with all CQ-capable codecs */
 #define HB_INVALID_VIDEO_QUALITY (-1000.)
@@ -1336,8 +1341,9 @@ struct hb_title_s
 #define HB_DECODE_NVDEC          0x04
 #define HB_DECODE_VIDEOTOOLBOX   0x08
 #define HB_DECODE_MF             0x10 // Windows Media Foundation
+#define HB_DECODE_VAAPI          0x20 // AMD VAAPI
 
-#define HB_DECODE_HWACCEL        (HB_DECODE_NVDEC | HB_DECODE_VIDEOTOOLBOX | HB_DECODE_QSV | HB_DECODE_MF)
+#define HB_DECODE_HWACCEL        (HB_DECODE_NVDEC | HB_DECODE_VIDEOTOOLBOX | HB_DECODE_QSV | HB_DECODE_MF | HB_DECODE_VAAPI)
 #define HB_DECODE_FORCE_HW       0x80000000
 
     hb_metadata_t * metadata;

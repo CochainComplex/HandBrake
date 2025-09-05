@@ -49,6 +49,7 @@ dnl
 <<#>>define HB_PROJECT_FEATURE_NVDEC             __FEATURE_nvdec
 <<#>>define HB_PROJECT_FEATURE_QSV               __FEATURE_qsv
 <<#>>define HB_PROJECT_FEATURE_VCE               __FEATURE_vce
+<<#>>define HB_PROJECT_FEATURE_VAAPI             __FEATURE_vaapi
 <<#>>define HB_PROJECT_FEATURE_X265              __FEATURE_x265
 <<#>>define HB_PROJECT_FEATURE_NUMA              __FEATURE_numa
 <<#>>define HB_PROJECT_FEATURE_LIBDOVI           __FEATURE_libdovi

@@ -51,6 +51,10 @@ LIBHB.out += $(LIBHB.a)
 LIBHB.GCC.D += __LIBHB__
 LIBHB.GCC.I += $(LIBHB.build/) $(CONTRIB.build/)include
 
+ifeq (1,$(FEATURE.vaapi))
+    LIBHB.GCC.I += /usr/include/libdrm
+endif
+
 ifeq (1,$(FEATURE.qsv))
     ifeq ($(HOST.system),freebsd)
         LIBHB.GCC.I += $(LOCALBASE)/include/vpl

@@ -1448,6 +1448,10 @@ def createCLI( cross = None ):
     grp.add_argument( '--enable-vce', dest="enable_vce", default=IfHost(True, 'x86_64-w64-mingw32*', none=False).value, action='store_true', help=(( 'enable %s' %h ) if h != argparse.SUPPRESS else h) )
     grp.add_argument( '--disable-vce', dest="enable_vce", action='store_false', help=(( 'disable %s' %h ) if h != argparse.SUPPRESS else h) )
 
+    h = 'AMD VAAPI video encoder'
+    grp.add_argument( '--enable-vaapi', dest="enable_vaapi", default=IfHost(True, 'x86_64-*-linux*', none=False).value, action='store_true', help='enable %s' %h )
+    grp.add_argument( '--disable-vaapi', dest="enable_vaapi", action='store_false', help='disable %s' %h )
+
     h = IfHost( 'libdovi', '*-*-*', none=argparse.SUPPRESS ).value
     grp.add_argument( '--enable-libdovi', dest="enable_libdovi", default=not Tools.cargo.fail and not Tools.cargoc.fail, action='store_true', help=(( 'enable %s' %h ) if h != argparse.SUPPRESS else h) )
     grp.add_argument( '--disable-libdovi', dest="enable_libdovi", action='store_false', help=(( 'disable %s' %h ) if h != argparse.SUPPRESS else h) )
@@ -2093,6 +2097,7 @@ int main()
     doc.add( 'FEATURE.nvdec',      int( options.enable_nvdec ))
     doc.add( 'FEATURE.qsv',        int( options.enable_qsv ))
     doc.add( 'FEATURE.vce',        int( options.enable_vce ))
+    doc.add( 'FEATURE.vaapi',      int( options.enable_vaapi ))
     doc.add( 'FEATURE.x265',       int( options.enable_x265 ))
     doc.add( 'FEATURE.numa',       int( options.enable_numa ))
     doc.add( 'FEATURE.libdovi',    int( options.enable_libdovi ))
@@ -2220,6 +2225,7 @@ int main()
     print(f'Enable NVDEC:       {options.enable_nvdec}' + ('' if nvenc_supported else note_unsupported))
     print(f'Enable QSV:         {options.enable_qsv}' + ('' if qsv_supported else note_unsupported))
     print(f'Enable VCE:         {options.enable_vce}' + ('' if vce_supported else note_unsupported))
+    print(f'Enable VAAPI:       {options.enable_vaapi}')
     print(f'Enable libdovi:     {options.enable_libdovi}')
     print(f'Enable GTK GUI:     {options.enable_gtk}' + ('' if gtk_supported else note_unsupported))
 

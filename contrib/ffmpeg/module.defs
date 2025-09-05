@@ -90,11 +90,18 @@ else ifeq (thin,$(GCC.lto))
     FFMPEG.CONFIGURE.extra += --enable-lto=thin
 endif
 
-ifneq (,$(filter $(FEATURE.qsv)-$(HOST.system),1-linux 1-freebsd))
+# Enable VAAPI when the VAAPI feature is enabled
+ifeq (1,$(FEATURE.vaapi))
     FFMPEG.CONFIGURE.extra += --enable-vaapi
     FFMPEG.CONFIGURE.extra += --disable-xlib
 else
-    FFMPEG.CONFIGURE.extra += --disable-vaapi
+    # QSV on Linux/FreeBSD requires VAAPI
+    ifneq (,$(filter $(FEATURE.qsv)-$(HOST.system),1-linux 1-freebsd))
+        FFMPEG.CONFIGURE.extra += --enable-vaapi
+        FFMPEG.CONFIGURE.extra += --disable-xlib
+    else
+        FFMPEG.CONFIGURE.extra += --disable-vaapi
+    endif
 endif
 
 ifeq (1,$(FEATURE.fdk_aac))

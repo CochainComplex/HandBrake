@@ -280,6 +280,10 @@ int encavcodecInit( hb_work_object_t * w, hb_job_t * job )
                     hb_log("encavcodecInit: H.264 (AMD VCE)");
                     codec_name = "h264_amf";
                     break;
+                case HB_VCODEC_FFMPEG_VAAPI_H264:
+                    hb_log("encavcodecInit: H.264 (AMD VAAPI)");
+                    codec_name = "h264_vaapi";
+                    break;
                 case HB_VCODEC_FFMPEG_MF_H264:
                     hb_log("encavcodecInit: H.264 (MediaFoundation)");
                     codec_name = "h264_mf";
@@ -302,6 +306,11 @@ int encavcodecInit( hb_work_object_t * w, hb_job_t * job )
                 case HB_VCODEC_FFMPEG_VCE_H265_10BIT:
                     hb_log("encavcodecInit: H.265 (AMD VCE)");
                     codec_name = "hevc_amf";
+                    break;
+                case HB_VCODEC_FFMPEG_VAAPI_H265:
+                case HB_VCODEC_FFMPEG_VAAPI_H265_10BIT:
+                    hb_log("encavcodecInit: H.265 (AMD VAAPI)");
+                    codec_name = "hevc_vaapi";
                     break;
                 case HB_VCODEC_FFMPEG_MF_H265:
                     hb_log("encavcodecInit: H.265 (MediaFoundation)");

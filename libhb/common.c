@@ -46,6 +46,10 @@
 #include "handbrake/vce_common.h"
 #endif
 
+#if HB_PROJECT_FEATURE_VAAPI
+#include "handbrake/vaapi_common.h"
+#endif
+
 #ifdef __APPLE__
 #include "platform/macosx/vt_common.h"
 #endif
@@ -65,12 +69,14 @@ enum
     HB_GID_VCODEC_H264_NVENC,
     HB_GID_VCODEC_H264_QSV,
     HB_GID_VCODEC_H264_VCE,
+    HB_GID_VCODEC_H264_VAAPI,
     HB_GID_VCODEC_H264_VT,
     HB_GID_VCODEC_H264_X264,
     HB_GID_VCODEC_H265_MF,
     HB_GID_VCODEC_H265_NVENC,
     HB_GID_VCODEC_H265_QSV,
     HB_GID_VCODEC_H265_VCE,
+    HB_GID_VCODEC_H265_VAAPI,
     HB_GID_VCODEC_H265_VT,
     HB_GID_VCODEC_H265_X265,
     HB_GID_VCODEC_MPEG2,
@@ -296,6 +302,7 @@ hb_encoder_internal_t hb_video_encoders[]  =
     { { "H.264 10-bit (x264)",         "x264_10bit",       "H.264 10-bit (libx264)",         HB_VCODEC_X264_10BIT,                         HB_MUX_MASK_MP4|HB_MUX_MASK_MKV, }, NULL, 0, 1, HB_GID_VCODEC_H264_X264,  },
     { { "H.264 (Intel QSV)",           "qsv_h264",         "H.264 (Intel QSV)",              HB_VCODEC_FFMPEG_QSV_H264,                    HB_MUX_MASK_MP4|HB_MUX_MASK_MKV, }, NULL, 0, 1, HB_GID_VCODEC_H264_QSV,   },
     { { "H.264 (AMD VCE)",             "vce_h264",         "H.264 (AMD VCE)",                HB_VCODEC_FFMPEG_VCE_H264,                    HB_MUX_MASK_MP4|HB_MUX_MASK_MKV, }, NULL, 0, 1, HB_GID_VCODEC_H264_VCE,   },
+    { { "H.264 (AMD VAAPI)",           "vaapi_h264",       "H.264 (AMD VAAPI)",              HB_VCODEC_FFMPEG_VAAPI_H264,                  HB_MUX_MASK_MP4|HB_MUX_MASK_MKV, }, NULL, 0, 1, HB_GID_VCODEC_H264_VAAPI, },
     { { "H.264 (NVEnc)",               "nvenc_h264",       "H.264 (NVEnc)",                  HB_VCODEC_FFMPEG_NVENC_H264,                  HB_MUX_MASK_MP4|HB_MUX_MASK_MKV, }, NULL, 0, 1, HB_GID_VCODEC_H264_NVENC, },
     { { "H.264 (MediaFoundation)",     "mf_h264",          "H.264 (MediaFoundation)",        HB_VCODEC_FFMPEG_MF_H264,                     HB_MUX_MASK_MP4|HB_MUX_MASK_MKV, }, NULL, 0, 1, HB_GID_VCODEC_H264_MF,    },
     { { "H.264 (VideoToolbox)",        "vt_h264",          "H.264 (VideoToolbox)",           HB_VCODEC_VT_H264,                            HB_MUX_MASK_MP4|HB_MUX_MASK_MKV, }, NULL, 0, 1, HB_GID_VCODEC_H264_VT,    },
@@ -307,6 +314,8 @@ hb_encoder_internal_t hb_video_encoders[]  =
     { { "H.265 10-bit (Intel QSV)",    "qsv_h265_10bit",   "H.265 10-bit (Intel QSV)",       HB_VCODEC_FFMPEG_QSV_H265_10BIT,                     HB_MUX_MASK_MP4|HB_MUX_MASK_MKV, }, NULL, 0, 1, HB_GID_VCODEC_H265_QSV, },
     { { "H.265 (AMD VCE)",             "vce_h265",         "H.265 (AMD VCE)",                HB_VCODEC_FFMPEG_VCE_H265,                    HB_MUX_MASK_MP4|HB_MUX_MASK_MKV, }, NULL, 0, 1, HB_GID_VCODEC_H265_VCE,   },
     { { "H.265 10-bit (AMD VCE)",      "vce_h265_10bit",   "H.265 10-bit (AMD VCE)",         HB_VCODEC_FFMPEG_VCE_H265_10BIT,              HB_MUX_MASK_MP4|HB_MUX_MASK_MKV, }, NULL, 0, 1, HB_GID_VCODEC_H265_VCE,   },
+    { { "H.265 (AMD VAAPI)",           "vaapi_h265",       "H.265 (AMD VAAPI)",              HB_VCODEC_FFMPEG_VAAPI_H265,                  HB_MUX_MASK_MP4|HB_MUX_MASK_MKV, }, NULL, 0, 1, HB_GID_VCODEC_H265_VAAPI, },
+    { { "H.265 10-bit (AMD VAAPI)",    "vaapi_h265_10bit", "H.265 10-bit (AMD VAAPI)",       HB_VCODEC_FFMPEG_VAAPI_H265_10BIT,            HB_MUX_MASK_MP4|HB_MUX_MASK_MKV, }, NULL, 0, 1, HB_GID_VCODEC_H265_VAAPI, },
     { { "H.265 (NVEnc)",               "nvenc_h265",       "H.265 (NVEnc)",                  HB_VCODEC_FFMPEG_NVENC_H265,                  HB_MUX_MASK_MP4|HB_MUX_MASK_MKV, }, NULL, 0, 1, HB_GID_VCODEC_H265_NVENC, },
     { { "H.265 10-bit (NVEnc)",        "nvenc_h265_10bit", "H.265 10-bit (NVEnc)",           HB_VCODEC_FFMPEG_NVENC_H265_10BIT,            HB_MUX_MASK_MP4|HB_MUX_MASK_MKV, }, NULL, 0, 1, HB_GID_VCODEC_H265_NVENC, },
     { { "H.265 (MediaFoundation)",     "mf_h265",          "H.265 (MediaFoundation)",        HB_VCODEC_FFMPEG_MF_H265,                     HB_MUX_MASK_MP4|HB_MUX_MASK_MKV, }, NULL, 0, 1, HB_GID_VCODEC_H265_MF,    },
@@ -342,6 +351,14 @@ static int hb_video_encoder_is_enabled(int encoder, int disable_hardware)
                 return hb_vce_h265_available();
             case HB_VCODEC_FFMPEG_VCE_AV1:
                 return hb_vce_av1_available();
+#endif
+#if HB_PROJECT_FEATURE_VAAPI
+            case HB_VCODEC_FFMPEG_VAAPI_H264:
+                return hb_vaapi_h264_available();
+            case HB_VCODEC_FFMPEG_VAAPI_H265:
+                return hb_vaapi_h265_available();
+            case HB_VCODEC_FFMPEG_VAAPI_H265_10BIT:
+                return hb_vaapi_h265_10bit_available();
 #endif
 
 #if HB_PROJECT_FEATURE_NVENC
@@ -585,6 +602,10 @@ static void hb_common_global_hw_init()
     // after other hw vendors initializations to prevent device order issues
     hb_qsv_available();
     hb_register_hwaccel(&hb_hwaccel_qsv);
+#endif
+#if HB_PROJECT_FEATURE_VAAPI
+    hb_vaapi_h264_available();
+    hb_register_hwaccel(&hb_hwaccel_vaapi);
 #endif
 
     hb_hwaccel_common_hwaccel_init();
