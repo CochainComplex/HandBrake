@@ -314,4 +314,59 @@ int hb_vaapi_supports_bframes(int vcodec)
     return 0;
 }
 
+// General VAAPI availability check
+int hb_vaapi_available(void)
+{
+    // Return true if any VAAPI codec is available
+    return hb_vaapi_h264_available() || 
+           hb_vaapi_h265_available() || 
+           hb_vaapi_h265_10bit_available();
+}
+
+// Check if specific codec decode is supported
+int hb_vaapi_decode_is_codec_supported(int adapter_index, int codec_id, int pix_fmt, int width, int height)
+{
+    // For now, we don't use adapter_index like QSV does
+    // Check basic resolution limits
+    if (width > 4096 || height > 4096)
+    {
+        return 0;
+    }
+    
+    // Check if we have a VAAPI decoder for this codec
+    const char* decoder_name = hb_vaapi_decode_get_codec_name(codec_id);
+    if (decoder_name == NULL)
+    {
+        return 0;
+    }
+    
+    // Check pixel format support (VAAPI mainly uses NV12 and P010)
+    if (pix_fmt != AV_PIX_FMT_NV12 && 
+        pix_fmt != AV_PIX_FMT_YUV420P &&
+        pix_fmt != AV_PIX_FMT_P010 &&
+        pix_fmt != AV_PIX_FMT_P010LE)
+    {
+        // VAAPI might still work with format conversion
+        // but be conservative for now
+    }
+    
+    // Check codec-specific support
+    switch (codec_id)
+    {
+        case AV_CODEC_ID_H264:
+            return hb_vaapi_h264_available();
+        case AV_CODEC_ID_HEVC:
+            return hb_vaapi_h265_available();
+        case AV_CODEC_ID_AV1:
+        case AV_CODEC_ID_VP9:
+        case AV_CODEC_ID_VP8:
+        case AV_CODEC_ID_MPEG2VIDEO:
+            // These decoders are supported if VAAPI is available
+            // We don't have specific checks for them yet
+            return hb_vaapi_available();
+        default:
+            return 0;
+    }
+}
+
 #endif // HB_PROJECT_FEATURE_VAAPI
