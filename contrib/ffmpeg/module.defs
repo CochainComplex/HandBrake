@@ -90,12 +90,23 @@ else ifeq (thin,$(GCC.lto))
     FFMPEG.CONFIGURE.extra += --enable-lto=thin
 endif
 
-# Enable VAAPI when the VAAPI feature is enabled
+# Enable VAAPI when the VAAPI feature is enabled (Linux/FreeBSD only)
 ifeq (1,$(FEATURE.vaapi))
-    FFMPEG.CONFIGURE.extra += --enable-vaapi
-    FFMPEG.CONFIGURE.extra += --disable-xlib
-    FFMPEG.CONFIGURE.extra += --enable-encoder=h264_vaapi
-    FFMPEG.CONFIGURE.extra += --enable-encoder=hevc_vaapi
+    # VAAPI is only available on Linux and FreeBSD
+    ifneq (,$(filter $(HOST.system),linux freebsd))
+        FFMPEG.CONFIGURE.extra += --enable-vaapi
+        FFMPEG.CONFIGURE.extra += --disable-xlib
+        # VAAPI Encoders
+        FFMPEG.CONFIGURE.extra += --enable-encoder=h264_vaapi
+        FFMPEG.CONFIGURE.extra += --enable-encoder=hevc_vaapi
+        # VAAPI Decoders (required for hardware decoding)
+        FFMPEG.CONFIGURE.extra += --enable-decoder=h264_vaapi
+        FFMPEG.CONFIGURE.extra += --enable-decoder=hevc_vaapi
+        FFMPEG.CONFIGURE.extra += --enable-decoder=av1_vaapi
+        FFMPEG.CONFIGURE.extra += --enable-decoder=mpeg2_vaapi
+        FFMPEG.CONFIGURE.extra += --enable-decoder=vp8_vaapi
+        FFMPEG.CONFIGURE.extra += --enable-decoder=vp9_vaapi
+    endif
 else
     # QSV on Linux/FreeBSD requires VAAPI
     ifneq (,$(filter $(FEATURE.qsv)-$(HOST.system),1-linux 1-freebsd))

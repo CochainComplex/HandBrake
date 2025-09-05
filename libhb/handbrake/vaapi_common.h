@@ -10,6 +10,8 @@
 #ifndef HANDBRAKE_VAAPI_COMMON_H
 #define HANDBRAKE_VAAPI_COMMON_H
 
+#include <libavcodec/avcodec.h>
+
 int hb_vaapi_h264_available(void);
 int hb_vaapi_h265_available(void);
 int hb_vaapi_h265_10bit_available(void);
@@ -24,5 +26,14 @@ int hb_vaapi_supports_cqp(int vcodec);
 int hb_vaapi_supports_vbr(int vcodec);
 int hb_vaapi_supports_cbr(int vcodec);
 uint32_t hb_vaapi_get_rc_modes(int vcodec);
+
+// Hardware decoder support functions
+const char* hb_vaapi_decode_get_codec_name(enum AVCodecID codec_id);
+int hb_vaapi_decode_is_codec_supported(int adapter_index, int video_codec_param, int pix_fmt, int width, int height);
+int hb_vaapi_decode_h264_is_supported(void);
+int hb_vaapi_decode_h265_is_supported(void);
+int hb_vaapi_decode_h265_10bit_is_supported(void);
+int hb_vaapi_decode_av1_is_supported(void);
+int hb_vaapi_available(void);
 
 #endif // HANDBRAKE_VAAPI_COMMON_H

@@ -68,6 +68,18 @@ static int vaapi_are_filters_supported(hb_list_t *filters)
     return 1;
 }
 
+// Function to find VAAPI hardware decoder for a given codec
+static void * vaapi_find_decoder(int codec_param)
+{
+    const char *codec_name = hb_vaapi_decode_get_codec_name(codec_param);
+    if (codec_name != NULL)
+    {
+        return (void *)avcodec_find_decoder_by_name(codec_name);
+    }
+    // Fallback to default decoder if VAAPI decoder not available
+    return NULL;
+}
+
 // Hardware accelerator structure
 hb_hwaccel_t hb_hwaccel_vaapi =
 {
@@ -83,7 +95,7 @@ hb_hwaccel_t hb_hwaccel_vaapi =
     .hw_pix_fmt   = -1,
 #endif
     .can_filter   = vaapi_are_filters_supported,
-    .find_decoder = NULL, // Use default
+    .find_decoder = vaapi_find_decoder,  // Use VAAPI-specific decoder lookup
     .upload       = NULL, // Use default
     .caps         = 0
 };
@@ -465,6 +477,102 @@ uint32_t hb_vaapi_get_rc_modes(int vcodec)
         return h265_caps.rate_control_modes;
     }
     return 0;
+}
+
+// VAAPI Hardware Decoder Support Functions
+// Following the QSV decoder pattern for consistency
+
+const char* hb_vaapi_decode_get_codec_name(enum AVCodecID codec_id)
+{
+    switch (codec_id)
+    {
+        case AV_CODEC_ID_H264:
+            return "h264_vaapi";
+        case AV_CODEC_ID_HEVC:
+            return "hevc_vaapi";
+        case AV_CODEC_ID_AV1:
+            return "av1_vaapi";
+        default:
+            return NULL;
+    }
+}
+
+int hb_vaapi_decode_h264_is_supported(void)
+{
+    // H264 decoder is supported if encoder is supported
+    // They use the same hardware capabilities
+    return hb_vaapi_h264_available();
+}
+
+int hb_vaapi_decode_h265_is_supported(void)
+{
+    // H265 decoder is supported if encoder is supported
+    return hb_vaapi_h265_available();
+}
+
+int hb_vaapi_decode_h265_10bit_is_supported(void)
+{
+    // H265 10-bit decoder is supported if encoder is supported
+    return hb_vaapi_h265_10bit_available();
+}
+
+int hb_vaapi_decode_av1_is_supported(void)
+{
+    // Check if AV1 decoding is supported
+    // For now, we'll check if VAAPI is available
+    // Future: Add specific AV1 capability detection
+    return vaapi_available;
+}
+
+int hb_vaapi_decode_is_codec_supported(int adapter_index, int video_codec_param, int pix_fmt, int width, int height)
+{
+    // adapter_index is not used for VAAPI (unlike QSV)
+    // Check if the codec and pixel format combination is supported
+    
+    switch (video_codec_param)
+    {
+        case AV_CODEC_ID_H264:
+            if (pix_fmt == AV_PIX_FMT_NV12 || 
+                pix_fmt == AV_PIX_FMT_YUV420P || 
+                pix_fmt == AV_PIX_FMT_YUVJ420P)
+            {
+                return hb_vaapi_decode_h264_is_supported();
+            }
+            break;
+            
+        case AV_CODEC_ID_HEVC:
+            if (pix_fmt == AV_PIX_FMT_NV12 || 
+                pix_fmt == AV_PIX_FMT_YUV420P || 
+                pix_fmt == AV_PIX_FMT_YUVJ420P)
+            {
+                return hb_vaapi_decode_h265_is_supported();
+            }
+            else if (pix_fmt == AV_PIX_FMT_P010LE || 
+                     pix_fmt == AV_PIX_FMT_YUV420P10)
+            {
+                return hb_vaapi_decode_h265_10bit_is_supported();
+            }
+            break;
+            
+        case AV_CODEC_ID_AV1:
+            if (pix_fmt == AV_PIX_FMT_NV12 || 
+                pix_fmt == AV_PIX_FMT_YUV420P)
+            {
+                return hb_vaapi_decode_av1_is_supported();
+            }
+            break;
+            
+        default:
+            break;
+    }
+    
+    return 0;
+}
+
+int hb_vaapi_available(void)
+{
+    // Return if VAAPI is available on the system
+    return vaapi_available;
 }
 
 #else // !HB_PROJECT_FEATURE_VAAPI

@@ -56,6 +56,10 @@
 #include "handbrake/qsv_common.h"
 #endif
 
+#if HB_PROJECT_FEATURE_VAAPI
+#include "handbrake/vaapi_common.h"
+#endif
+
 static void compute_frame_duration( hb_work_private_t *pv );
 static int  decavcodecaInit( hb_work_object_t *, hb_job_t * );
 static int  decavcodecaWork( hb_work_object_t *, hb_buffer_t **, hb_buffer_t ** );
@@ -2456,6 +2460,17 @@ static int decavcodecvInfo( hb_work_object_t *w, hb_work_info_t *info )
             pv->context->pix_fmt, pv->context->width, pv->context->height))
         {
             info->video_decode_support |= HB_DECODE_QSV;
+        }
+    }
+#endif
+
+#if HB_PROJECT_FEATURE_VAAPI
+    if (hb_vaapi_available())
+    {
+        if (hb_vaapi_decode_is_codec_supported(0, pv->context->codec_id,
+            pv->context->pix_fmt, pv->context->width, pv->context->height))
+        {
+            info->video_decode_support |= HB_DECODE_VAAPI;
         }
     }
 #endif
