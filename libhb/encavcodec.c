@@ -735,7 +735,56 @@ int encavcodecInit( hb_work_object_t * w, hb_job_t * job )
             }
         }
 #endif
-        context->pix_fmt = job->output_pix_fmt;
+
+        // Initialize VAAPI hardware context for VAAPI encoders
+        if ((job->vcodec == HB_VCODEC_FFMPEG_VAAPI_H264 || 
+             job->vcodec == HB_VCODEC_FFMPEG_VAAPI_H265 ||
+             job->vcodec == HB_VCODEC_FFMPEG_VAAPI_H265_10BIT) && 
+            !job->hw_device_ctx)
+        {
+            hb_hwaccel_hw_device_ctx_init(AV_HWDEVICE_TYPE_VAAPI,
+                                          job->hw_device_index,
+                                          (void **)&context->hw_device_ctx);
+
+            if (context->hw_device_ctx == NULL)
+            {
+                hb_error("encavcodec: Failed to create VAAPI hardware device context");
+                ret = 1;
+                goto done;
+            }
+
+            // Set up hardware frames context for VAAPI
+            context->hw_frames_ctx = av_hwframe_ctx_alloc(context->hw_device_ctx);
+            if (context->hw_frames_ctx == NULL)
+            {
+                hb_error("encavcodec: Failed to allocate VAAPI hardware frames context");
+                ret = 1;
+                goto done;
+            }
+
+            AVHWFramesContext *frames_ctx = (AVHWFramesContext *)context->hw_frames_ctx->data;
+            frames_ctx->format = AV_PIX_FMT_VAAPI;
+            frames_ctx->sw_format = job->output_pix_fmt; // Usually AV_PIX_FMT_YUV420P or AV_PIX_FMT_NV12
+            frames_ctx->width = context->width;
+            frames_ctx->height = context->height;
+            frames_ctx->initial_pool_size = 20; // Enough frames for encoding
+
+            if (av_hwframe_ctx_init(context->hw_frames_ctx) < 0)
+            {
+                hb_error("encavcodec: Failed to initialize VAAPI hardware frames context");
+                av_buffer_unref(&context->hw_frames_ctx);
+                ret = 1;
+                goto done;
+            }
+
+            // Set encoder pixel format to VAAPI
+            context->pix_fmt = AV_PIX_FMT_VAAPI;
+            hb_log("encavcodec: VAAPI hardware context initialized successfully");
+        }
+        else
+        {
+            context->pix_fmt = job->output_pix_fmt;
+        }
     }
 
     context->sample_aspect_ratio.num = job->par.num;

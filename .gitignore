@@ -47,3 +47,8 @@ gtk/po/*~
 .mcp.json
 .claude/*
 CLAUDE.md
+
+# Test files
+*.mpg
+*.mp4
+test_*

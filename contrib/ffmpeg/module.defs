@@ -94,6 +94,8 @@ endif
 ifeq (1,$(FEATURE.vaapi))
     FFMPEG.CONFIGURE.extra += --enable-vaapi
     FFMPEG.CONFIGURE.extra += --disable-xlib
+    FFMPEG.CONFIGURE.extra += --enable-encoder=h264_vaapi
+    FFMPEG.CONFIGURE.extra += --enable-encoder=hevc_vaapi
 else
     # QSV on Linux/FreeBSD requires VAAPI
     ifneq (,$(filter $(FEATURE.qsv)-$(HOST.system),1-linux 1-freebsd))
