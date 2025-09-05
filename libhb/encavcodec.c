@@ -764,10 +764,13 @@ int encavcodecInit( hb_work_object_t * w, hb_job_t * job )
 
             AVHWFramesContext *frames_ctx = (AVHWFramesContext *)context->hw_frames_ctx->data;
             frames_ctx->format = AV_PIX_FMT_VAAPI;
-            frames_ctx->sw_format = job->output_pix_fmt; // Usually AV_PIX_FMT_YUV420P or AV_PIX_FMT_NV12
+            frames_ctx->sw_format = AV_PIX_FMT_NV12; // VAAPI prefers NV12 format
             frames_ctx->width = context->width;
             frames_ctx->height = context->height;
             frames_ctx->initial_pool_size = 20; // Enough frames for encoding
+            
+            hb_log("encavcodec: VAAPI hw_frames_ctx config: format=VAAPI, sw_format=NV12, size=%dx%d", 
+                   frames_ctx->width, frames_ctx->height);
 
             if (av_hwframe_ctx_init(context->hw_frames_ctx) < 0)
             {
@@ -779,7 +782,10 @@ int encavcodecInit( hb_work_object_t * w, hb_job_t * job )
 
             // Set encoder pixel format to VAAPI
             context->pix_fmt = AV_PIX_FMT_VAAPI;
-            hb_log("encavcodec: VAAPI hardware context initialized successfully");
+            
+            // CRITICAL: hw_frames_ctx must be set BEFORE avcodec_open
+            // The encoder needs this during initialization
+            hb_log("encavcodec: VAAPI hardware context initialized, frames_ctx assigned to encoder");
         }
         else
         {
@@ -1322,13 +1328,70 @@ static void Encode( hb_work_object_t *w, hb_buffer_t **buf_in,
         frame.flags = 0;
     }
 
-    // Encode
-    ret = avcodec_send_frame(pv->context, &frame);
+    // Check if encoder expects hardware frames but received software frame
+    if (pv->context->pix_fmt == AV_PIX_FMT_VAAPI && frame.format != AV_PIX_FMT_VAAPI)
+    {
+        hb_log("encavcodec: Detected software frame (format=%d), uploading to VAAPI hardware", frame.format);
+        
+        // Verify hw_frames_ctx is available
+        if (!pv->context->hw_frames_ctx)
+        {
+            hb_error("encavcodec: hw_frames_ctx is NULL, cannot upload frame");
+            av_frame_unref(&frame);
+            return;
+        }
+        
+        // Need to upload software frame to hardware
+        AVFrame *hw_frame = av_frame_alloc();
+        if (!hw_frame)
+        {
+            hb_error("encavcodec: Failed to allocate hardware frame");
+            av_frame_unref(&frame);
+            return;
+        }
+        
+        hb_log("encavcodec: Getting hardware frame from pool...");
+        // Get hardware frame from pool
+        ret = av_hwframe_get_buffer(pv->context->hw_frames_ctx, hw_frame, 0);
+        if (ret < 0)
+        {
+            hb_error("encavcodec: av_hwframe_get_buffer failed: %s (ret=%d)", av_err2str(ret), ret);
+            av_frame_free(&hw_frame);
+            av_frame_unref(&frame);
+            return;
+        }
+        
+        hb_log("encavcodec: Transferring frame data to hardware...");
+        // Transfer software frame to hardware
+        ret = av_hwframe_transfer_data(hw_frame, &frame, 0);
+        if (ret < 0)
+        {
+            hb_error("encavcodec: av_hwframe_transfer_data failed: %s (ret=%d)", av_err2str(ret), ret);
+            av_frame_free(&hw_frame);
+            av_frame_unref(&frame);
+            return;
+        }
+            
+        
+        hb_log("encavcodec: Frame upload successful, copying properties...");
+        // Copy properties from software frame
+        av_frame_copy_props(hw_frame, &frame);
+        
+        hb_log("encavcodec: Sending hardware frame to encoder...");
+        // Send hardware frame to encoder
+        ret = avcodec_send_frame(pv->context, hw_frame);
+        av_frame_free(&hw_frame);
+    }
+    else
+    {
+        // Normal path for software encoders or already-hardware frames
+        ret = avcodec_send_frame(pv->context, &frame);
+    }
     av_frame_unref(&frame);
 
     if (ret < 0)
     {
-        hb_log("encavcodec: avcodec_send_frame failed");
+        hb_log("encavcodec: avcodec_send_frame failed: %s (ret=%d)", av_err2str(ret), ret);
         return;
     }
 
