@@ -35,6 +35,23 @@
 static int is_h264_available = -1;
 static int is_h265_available = -1;
 
+// VAAPI capability cache
+typedef struct {
+    int supports_bframes;     // -1 = unknown, 0 = no, 1 = yes
+    int supports_10bit;       // -1 = unknown, 0 = no, 1 = yes
+    int max_width;
+    int max_height;
+    uint32_t rate_control_modes;  // Bitmask of supported RC modes
+    int quality_levels;       // Number of quality levels supported
+    uint32_t packed_headers;  // Bitmask of supported packed headers
+} hb_vaapi_caps_t;
+
+static hb_vaapi_caps_t h264_caps = {-1, -1, 0, 0, 0, 0, 0};
+static hb_vaapi_caps_t h265_caps = {-1, -1, 0, 0, 0, 0, 0};
+
+// Forward declaration for capability querying function
+static void query_vaapi_capabilities(VADisplay va_dpy, VAProfile profile, hb_vaapi_caps_t *caps);
+
 // Encoder list for hwaccel structure
 static const int vaapi_encoders[] = {
     HB_VCODEC_FFMPEG_VAAPI_H264,
@@ -160,6 +177,23 @@ static int check_vaapi_codec_support(VAProfile profile_to_check)
                 if (has_profile)
                 {
                     hb_log("VAAPI: %s profile supported on %s (VA-API %d.%d)\n", profile_name, render_nodes[i], major, minor);
+                    
+                    // Query capabilities for this profile
+                    hb_vaapi_caps_t *caps_ptr = NULL;
+                    if (profile_to_check == VAProfileH264Main || profile_to_check == VAProfileH264High)
+                    {
+                        caps_ptr = &h264_caps;
+                    }
+                    else if (profile_to_check == VAProfileHEVCMain || profile_to_check == VAProfileHEVCMain10)
+                    {
+                        caps_ptr = &h265_caps;
+                    }
+                    
+                    if (caps_ptr && caps_ptr->max_width == 0) // Only query once
+                    {
+                        query_vaapi_capabilities(va_dpy, profile_to_check, caps_ptr);
+                    }
+                    
                     return 1;
                 }
                 else
@@ -182,6 +216,80 @@ static int check_vaapi_codec_support(VAProfile profile_to_check)
     
     hb_log("VAAPI: No suitable hardware encoder found for %s profile\n", profile_name);
     return 0;
+}
+
+// Query VAAPI encoder capabilities using vendor-agnostic VA attributes
+static void query_vaapi_capabilities(VADisplay va_dpy, VAProfile profile, hb_vaapi_caps_t *caps)
+{
+    if (!caps || !va_dpy) return;
+    
+    // Check if encoder entrypoint is available
+    VAEntrypoint entrypoints[10];
+    int num_entrypoints = 0;
+    VAStatus status = vaQueryConfigEntrypoints(va_dpy, profile, entrypoints, &num_entrypoints);
+    
+    if (status != VA_STATUS_SUCCESS || num_entrypoints == 0) {
+        return;
+    }
+    
+    // Look for encode entrypoint
+    int has_encode = 0;
+    for (int i = 0; i < num_entrypoints; i++) {
+        if (entrypoints[i] == VAEntrypointEncSlice || 
+            entrypoints[i] == VAEntrypointEncSliceLP) {
+            has_encode = 1;
+            break;
+        }
+    }
+    
+    if (!has_encode) return;
+    
+    // Query configuration attributes
+    VAConfigAttrib attrs[7];
+    attrs[0].type = VAConfigAttribRateControl;
+    attrs[1].type = VAConfigAttribMaxPictureWidth;
+    attrs[2].type = VAConfigAttribMaxPictureHeight;
+    attrs[3].type = VAConfigAttribRTFormat;
+    attrs[4].type = VAConfigAttribEncMaxRefFrames;
+    attrs[5].type = VAConfigAttribEncQualityRange;
+    attrs[6].type = VAConfigAttribEncPackedHeaders;
+    
+    status = vaGetConfigAttributes(va_dpy, profile, VAEntrypointEncSlice, attrs, 7);
+    if (status == VA_STATUS_SUCCESS) {
+        // Rate control modes
+        if (attrs[0].value != VA_ATTRIB_NOT_SUPPORTED) {
+            caps->rate_control_modes = attrs[0].value;
+        }
+        
+        // Max resolution
+        if (attrs[1].value != VA_ATTRIB_NOT_SUPPORTED) {
+            caps->max_width = attrs[1].value;
+        }
+        if (attrs[2].value != VA_ATTRIB_NOT_SUPPORTED) {
+            caps->max_height = attrs[2].value;
+        }
+        
+        // RT formats (pixel formats) - check for 10-bit support
+        if (attrs[3].value != VA_ATTRIB_NOT_SUPPORTED) {
+            // Check if 10-bit formats are supported
+            if (attrs[3].value & VA_RT_FORMAT_YUV420_10) {
+                caps->supports_10bit = 1;
+            } else {
+                caps->supports_10bit = 0;
+            }
+        }
+        
+        // Reference frames - can indicate B-frame support
+        if (attrs[4].value != VA_ATTRIB_NOT_SUPPORTED && attrs[4].value > 1) {
+            // If more than 1 reference frame, likely supports B-frames
+            // This is a heuristic - more sophisticated detection could be added
+            caps->supports_bframes = (attrs[4].value > 2) ? 1 : 0;
+        }
+        
+        hb_log("VAAPI: Capabilities - RC modes: 0x%x, Max res: %dx%d, 10bit: %d, B-frames: %d\n",
+               caps->rate_control_modes, caps->max_width, caps->max_height, 
+               caps->supports_10bit, caps->supports_bframes);
+    }
 }
 
 int hb_vaapi_h264_available(void)
@@ -222,6 +330,55 @@ int hb_vaapi_h265_10bit_available(void)
     return is_h265_10bit_available;
 }
 
+int hb_vaapi_supports_bframes(int vcodec)
+{
+    if (vcodec == HB_VCODEC_FFMPEG_VAAPI_H264)
+    {
+        // Ensure capabilities are queried
+        hb_vaapi_h264_available();
+        return h264_caps.supports_bframes > 0 ? 1 : 0;
+    }
+    else if (vcodec == HB_VCODEC_FFMPEG_VAAPI_H265 || 
+             vcodec == HB_VCODEC_FFMPEG_VAAPI_H265_10BIT)
+    {
+        hb_vaapi_h265_available();
+        return h265_caps.supports_bframes > 0 ? 1 : 0;
+    }
+    return 0;
+}
+
+int hb_vaapi_get_max_width(int vcodec)
+{
+    if (vcodec == HB_VCODEC_FFMPEG_VAAPI_H264)
+    {
+        hb_vaapi_h264_available();
+        return h264_caps.max_width > 0 ? h264_caps.max_width : 4096; // Default to 4K
+    }
+    else if (vcodec == HB_VCODEC_FFMPEG_VAAPI_H265 || 
+             vcodec == HB_VCODEC_FFMPEG_VAAPI_H265_10BIT)
+    {
+        hb_vaapi_h265_available();
+        return h265_caps.max_width > 0 ? h265_caps.max_width : 8192; // Default to 8K
+    }
+    return 4096;
+}
+
+int hb_vaapi_get_max_height(int vcodec)
+{
+    if (vcodec == HB_VCODEC_FFMPEG_VAAPI_H264)
+    {
+        hb_vaapi_h264_available();
+        return h264_caps.max_height > 0 ? h264_caps.max_height : 4096;
+    }
+    else if (vcodec == HB_VCODEC_FFMPEG_VAAPI_H265 || 
+             vcodec == HB_VCODEC_FFMPEG_VAAPI_H265_10BIT)
+    {
+        hb_vaapi_h265_available();
+        return h265_caps.max_height > 0 ? h265_caps.max_height : 8192;
+    }
+    return 4096;
+}
+
 #else // !HB_PROJECT_FEATURE_VAAPI
 
 // Stub implementations when VAAPI is disabled
@@ -238,6 +395,21 @@ int hb_vaapi_h265_available(void)
 int hb_vaapi_h265_10bit_available(void)
 {
     return 0;
+}
+
+int hb_vaapi_supports_bframes(int vcodec)
+{
+    return 0;
+}
+
+int hb_vaapi_get_max_width(int vcodec)
+{
+    return 4096;
+}
+
+int hb_vaapi_get_max_height(int vcodec)
+{
+    return 4096;
 }
 
 #endif // HB_PROJECT_FEATURE_VAAPI

@@ -14,4 +14,9 @@ int hb_vaapi_h264_available(void);
 int hb_vaapi_h265_available(void);
 int hb_vaapi_h265_10bit_available(void);
 
+// Capability query functions
+int hb_vaapi_supports_bframes(int vcodec);
+int hb_vaapi_get_max_width(int vcodec);
+int hb_vaapi_get_max_height(int vcodec);
+
 #endif // HANDBRAKE_VAAPI_COMMON_H

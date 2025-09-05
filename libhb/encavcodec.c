@@ -18,6 +18,7 @@
 #include "handbrake/nal_units.h"
 #include "handbrake/nvenc_common.h"
 #include "handbrake/vce_common.h"
+#include "handbrake/vaapi_common.h"
 #include "handbrake/extradata.h"
 #include "handbrake/qsv_common.h"
 
@@ -112,6 +113,21 @@ static const char * const h264_qsv_profile_name[] =
 static const char * const h265_qsv_profile_name[] =
 {
     "auto", "main", "main10", "mainsp",  NULL
+};
+
+static const char * const h264_vaapi_profile_names[] =
+{
+    "auto", "baseline", "main", "high", NULL
+};
+
+static const char * const h265_vaapi_profile_names[] =
+{
+    "auto", "main", "main10", NULL
+};
+
+static const char * const vaapi_preset_names[] =
+{
+    "default", "slow", "medium", "fast", "hp", "hq", "bd", "ll", NULL
 };
 
 static const char * const h26x_nvenc_preset_names[] =
@@ -786,6 +802,18 @@ int encavcodecInit( hb_work_object_t * w, hb_job_t * job )
             // CRITICAL: hw_frames_ctx must be set BEFORE avcodec_open
             // The encoder needs this during initialization
             hb_log("encavcodec: VAAPI hardware context initialized, frames_ctx assigned to encoder");
+            
+            // Auto-configure B-frames based on hardware capabilities
+            if (hb_vaapi_supports_bframes(job->vcodec))
+            {
+                context->max_b_frames = 2;  // Conservative default for supported hardware
+                hb_log("encavcodec: VAAPI hardware supports B-frames, setting max_b_frames to 2");
+            }
+            else
+            {
+                context->max_b_frames = 0;  // Disable B-frames if not supported
+                hb_log("encavcodec: VAAPI hardware does not support B-frames");
+            }
         }
         else
         {
@@ -1801,6 +1829,11 @@ const char* const* hb_av_preset_get_names(int encoder)
         case HB_VCODEC_FFMPEG_FFV1:
             return ffv1_preset_names;
 
+        case HB_VCODEC_FFMPEG_VAAPI_H264:
+        case HB_VCODEC_FFMPEG_VAAPI_H265:
+        case HB_VCODEC_FFMPEG_VAAPI_H265_10BIT:
+            return vaapi_preset_names;
+
 #if HB_PROJECT_FEATURE_QSV
         case HB_VCODEC_FFMPEG_QSV_H264:
         case HB_VCODEC_FFMPEG_QSV_H265:
@@ -1848,6 +1881,11 @@ const char* const* hb_av_profile_get_names(int encoder)
         case HB_VCODEC_FFMPEG_QSV_H265:
         case HB_VCODEC_FFMPEG_QSV_H265_10BIT:
             return h265_qsv_profile_name;
+        case HB_VCODEC_FFMPEG_VAAPI_H264:
+            return h264_vaapi_profile_names;
+        case HB_VCODEC_FFMPEG_VAAPI_H265:
+        case HB_VCODEC_FFMPEG_VAAPI_H265_10BIT:
+            return h265_vaapi_profile_names;
          default:
              return empty_names;
      }
@@ -1859,6 +1897,7 @@ const char* const* hb_av_level_get_names(int encoder)
     {
         case HB_VCODEC_FFMPEG_NVENC_H264:
         case HB_VCODEC_FFMPEG_MF_H264:
+        case HB_VCODEC_FFMPEG_VAAPI_H264:
             return hb_h264_level_names;
 
         case HB_VCODEC_FFMPEG_VCE_H264:
@@ -1871,6 +1910,8 @@ const char* const* hb_av_level_get_names(int encoder)
         case HB_VCODEC_FFMPEG_QSV_H265:
         case HB_VCODEC_FFMPEG_QSV_H265_10BIT:
         case HB_VCODEC_FFMPEG_MF_H265:
+        case HB_VCODEC_FFMPEG_VAAPI_H265:
+        case HB_VCODEC_FFMPEG_VAAPI_H265_10BIT:
             return hb_h265_level_names;
 
         case HB_VCODEC_FFMPEG_VCE_AV1:
