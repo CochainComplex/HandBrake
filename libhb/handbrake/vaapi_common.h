@@ -30,4 +30,8 @@ int hb_vaapi_supports_vbr(int vcodec);
 int hb_vaapi_supports_cbr(int vcodec);
 int hb_vaapi_supports_bframes(int vcodec);
 
+// General availability and decode support
+int hb_vaapi_available(void);
+int hb_vaapi_decode_is_codec_supported(int adapter_index, int codec_id, int pix_fmt, int width, int height);
+
 #endif // HANDBRAKE_VAAPI_COMMON_H
