@@ -106,7 +106,7 @@ hb_hwaccel_t hb_hwaccel_vaapi =
     .can_filter   = vaapi_are_filters_supported,
     .find_decoder = vaapi_find_decoder,  // Use VAAPI-specific decoder lookup
     .upload       = NULL, // Use default
-    .caps         = 0
+    .caps         = HB_HWACCEL_CAP_SCAN
 };
 
 static int check_vaapi_codec_support(VAProfile profile_to_check)

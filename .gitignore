@@ -52,3 +52,4 @@ CLAUDE.md
 *.mpg
 *.mp4
 test_*
+*.log
