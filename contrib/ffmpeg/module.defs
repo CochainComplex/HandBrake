@@ -99,6 +99,8 @@ ifeq (1,$(FEATURE.vaapi))
         # VAAPI Encoders
         FFMPEG.CONFIGURE.extra += --enable-encoder=h264_vaapi
         FFMPEG.CONFIGURE.extra += --enable-encoder=hevc_vaapi
+        # VAAPI Filters (critical for hardware pipeline)
+        FFMPEG.CONFIGURE.extra += --enable-filter=scale_vaapi
         # VAAPI Hardware Acceleration (critical for hardware decoding)
         FFMPEG.CONFIGURE.extra += --enable-hwaccel=h264_vaapi
         FFMPEG.CONFIGURE.extra += --enable-hwaccel=hevc_vaapi
