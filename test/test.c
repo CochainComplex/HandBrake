@@ -1522,6 +1522,9 @@ static void ShowHelp(void)
 #else
 "                           Use 'nvdec' to enable NVDec                  \n"
 "                           Use 'qsv' to enable QSV decoding             \n"
+#if HB_PROJECT_FEATURE_VAAPI
+"                           Use 'vaapi' to enable VAAPI decoding         \n"
+#endif
 #endif
 "   --disable-hw-decoding   Disable hardware decoding of the video track,\n"
 "                           forcing software decoding instead\n"
@@ -3301,6 +3304,12 @@ static int ParseOptions( int argc, char ** argv )
                     {
                         hw_decode = HB_DECODE_MF;
                     }
+#if HB_PROJECT_FEATURE_VAAPI
+                    else if (!strcmp(optarg, "vaapi"))
+                    {
+                        hw_decode = HB_DECODE_VAAPI;
+                    }
+#endif
                     else
                     {
                         hw_decode = 0;

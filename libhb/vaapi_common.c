@@ -34,6 +34,7 @@
 
 static int is_h264_available = -1;
 static int is_h265_available = -1;
+static int vaapi_available = -1;  // Overall VAAPI availability
 
 // VAAPI capability cache
 typedef struct {
@@ -521,7 +522,7 @@ int hb_vaapi_decode_av1_is_supported(void)
     // Check if AV1 decoding is supported
     // For now, we'll check if VAAPI is available
     // Future: Add specific AV1 capability detection
-    return vaapi_available;
+    return hb_vaapi_available();
 }
 
 int hb_vaapi_decode_is_codec_supported(int adapter_index, int video_codec_param, int pix_fmt, int width, int height)
@@ -571,7 +572,15 @@ int hb_vaapi_decode_is_codec_supported(int adapter_index, int video_codec_param,
 
 int hb_vaapi_available(void)
 {
-    // Return if VAAPI is available on the system
+    // Check if VAAPI is available on the system
+    // Cache the result to avoid repeated detection
+    if (vaapi_available == -1)
+    {
+        // VAAPI is available if any codec is supported
+        vaapi_available = hb_vaapi_h264_available() ||
+                         hb_vaapi_h265_available() ||
+                         hb_vaapi_h265_10bit_available();
+    }
     return vaapi_available;
 }
 
